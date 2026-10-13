@@ -22,7 +22,10 @@ For each claim:
    - for quotes: wording matches exactly.
 3. For important claims (numbers, dates, anything the conclusion depends on) find a second independent source when one exists.
 4. Verdict per claim: `verified` | `refuted` (state what is actually true and where it says so) | `unverifiable` (source unreachable or no support found).
-5. Also scan the draft (if given) for statements that carry facts but have no `[Cn]` marker, and list them as `UNTRACED`.
+5. Also read the draft (if given): units marked `[~]` claim to be non-factual (opinion, recommendation, transition). Any `[~]` unit that actually states a fact, number, date, name of a product/standard or a causal claim → list it as `UNTRACED`. Same for any claim marker whose sentence says more than the cited claims.
+6. Write your report to `<run>/reports/round-<N>-fact-checker[-<batch>].md` (the table below plus the UNTRACED list), then record every verdict yourself, bound to the claim's current version:
+   `sh "${CLAUDE_PLUGIN_ROOT}/scripts/py.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/runs.py" verdict --run <id> --id Cn --status verified|refuted|unverifiable --by fact-checker --report <report path> --note "<reason>"`
+   Only you and code-verifier may record `verified`; the command refuses it without a report file.
 
 Never rewrite the draft. Never accept "commonly known" as evidence. If you cannot access a source, say unverifiable — do not reason around it.
 

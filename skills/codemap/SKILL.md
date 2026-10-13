@@ -16,7 +16,7 @@ Shorthand: `CM` = `sh "${CLAUDE_PLUGIN_ROOT}/scripts/py.sh" "${CLAUDE_PLUGIN_ROO
 | `.conductor/cards/<module>.md` | cartographer (haiku) | ≤ 60 lines each, read on demand | purpose, public interface, invariants, file list of one module |
 | source files | humans/builder | expensive | details |
 
-Read top-down and stop as soon as you have enough. Never glob or read the whole tree.
+Read top-down and stop as soon as you have enough. The map is the first source of navigation, not a guarantee of completeness: dynamic imports, generated code and unannotated languages can be missing. When the map does not answer, widen step by step (module directory → related modules → targeted repo-wide Grep) rather than reading the whole tree.
 
 ## Using it
 
@@ -28,7 +28,7 @@ Read top-down and stop as soon as you have enough. Never glob or read the whole 
 ## Keeping it fresh (automatic)
 
 - **SessionStart hook**: `CM sync` re-indexes only files whose size/mtime changed since last time (cheap, no model), then injects MAP.md.
-- **PostToolUse hook on Edit/Write/MultiEdit/NotebookEdit**: re-indexes the edited file, marks its module card STALE, and tells you the direct dependents.
+- **PostToolUse hook on Edit/Write/MultiEdit/NotebookEdit**: re-indexes the edited file, marks its module card STALE, and tells you the direct dependents. When a file is created, files whose imports could not be resolved earlier and may point to it are re-resolved, so an import written before its target existed is linked as soon as the target appears.
 - **You**: at the end of a task, if cards of modules you touched are STALE, delegate to `conductor:cartographer` with exactly those module ids (`CM stale` lists them). Cards for modules you did not touch can stay stale until needed.
 
 Edits made outside Claude Code (IDE, git pull) are caught by the next session's `sync`, or immediately with `CM sync`.

@@ -17,4 +17,7 @@ Procedure:
 5. Check each acceptance criterion one by one: met / not met / untestable, with evidence (test name, output line).
 6. Look for: unhandled errors, edge cases from the spec, leftover debug code, secrets, broken imports.
 
+Write your report to `<run>/reports/round-<N>-code-verifier.md`. If the run has claims of kind `code` (e.g. "API X exists in version Y", "function returns Z"), record a verdict for each:
+`sh "${CLAUDE_PLUGIN_ROOT}/scripts/py.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/runs.py" verdict --run <id> --id Cn --status verified|refuted|unverifiable --by code-verifier --report <report path> --note "<evidence>"`
+
 Return ONLY: commands + pass/fail, a criteria table, and defects as `file:line — problem — why` (≤ 20 words each). Default budget 300 words.

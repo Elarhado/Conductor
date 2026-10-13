@@ -47,6 +47,7 @@ GROUP_ROOTS = {"src", "lib", "app", "apps", "packages", "Assets", "Scripts", "sc
 SOURCE_EXT_ORDER = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".vue", ".svelte", ".py",
                     ".gd", ".md"]
 
+STDLIB = set(getattr(sys, "stdlib_module_names", ())) | {"__future__"}
 RE_ANNOT = re.compile(r"@map:\s*(depends|tags)\s*=\s*([^\n*]+)")
 RE_PY = re.compile(r"^\s*(?:from\s+(\.*[\w.]*)\s+import\s+([\w*, ()]+)|import\s+([\w., ]+))", re.M)
 RE_JS = re.compile(r"""(?:import\s[^'"]*?from\s*|import\s*\(\s*|require\s*\(\s*|export\s[^'"]*?from\s*|import\s+)['"]([^'"]+)['"]""")
@@ -184,11 +185,16 @@ def extract_deps(root, relpath, text, known, groot_rel):
                     r = resolve_candidates(root, "", spec, known)
                     if not r and not mod:  # from . import a, b
                         for nm in re.findall(r"\w+", names):
-                            r2 = resolve_candidates(root, "", (base / nm).as_posix(), known)
+                            cand = (base / nm).as_posix()
+                            r2 = resolve_candidates(root, "", cand, known)
                             if r2:
                                 deps.add(r2)
+                            else:
+                                ext.add(cand)
                     elif r:
                         deps.add(r)
+                    else:
+                        ext.add(spec)
                 else:
                     spec = frm.replace(".", "/")
                     sub = []
@@ -205,6 +211,8 @@ def extract_deps(root, relpath, text, known, groot_rel):
                             root, "", "src/" + spec, known)
                         if r:
                             deps.add(r)
+                        elif frm.split(".")[0] not in STDLIB:
+                            ext.add(frm)
             else:
                 for m in imp.split(","):
                     m = m.strip().split(" ")[0]
@@ -213,6 +221,8 @@ def extract_deps(root, relpath, text, known, groot_rel):
                     r = resolve_candidates(root, "", m.replace(".", "/"), known)
                     if r:
                         deps.add(r)
+                    elif m.split(".")[0] not in STDLIB:
+                        ext.add(m)
     elif suf in (".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte"):
         for spec in RE_JS.findall(text):
             if spec.startswith(".") or spec.startswith("/"):
@@ -221,6 +231,8 @@ def extract_deps(root, relpath, text, known, groot_rel):
                 r = resolve_candidates(root, "", "src/" + spec[2:], known)
                 if r:
                     deps.add(r)
+                else:
+                    ext.add(spec)
     elif suf in (".gd", ".tscn", ".tres"):
         rx = RE_GD if suf == ".gd" else RE_TSCN
         for spec in rx.findall(text):
@@ -228,6 +240,8 @@ def extract_deps(root, relpath, text, known, groot_rel):
                                    if groot_rel not in ("", ".") else spec, known)
             if r and r != relpath:
                 deps.add(r)
+            elif not r:
+                ext.add("res://" + spec)
     elif suf == ".md":
         for spec in RE_MDLINK.findall(text):
             if "://" in spec or spec.startswith("mailto:"):
@@ -240,7 +254,7 @@ def extract_deps(root, relpath, text, known, groot_rel):
             if "://" in spec or spec.startswith(("data:", "mailto:", "javascript:")):
                 continue
             add(spec if spec.startswith((".", "/")) else "./" + spec)
-    return sorted(deps), sorted(ext)[:20], sorted(tags)
+    return sorted(deps), sorted(ext)[:50], sorted(tags)
 
 
 def read_text(root, relpath):
@@ -397,10 +411,7 @@ def sync(root, cfg):
             changed_mods.add(m["files"][r]["m"])
             del m["files"][r]
     if structure_changed:  # new files may resolve previously-unresolved imports
-        for r, info in list(m["files"].items()):
-            if info.get("x") or any(d not in known for d in info["d"]):
-                index_file(root, m, r, os.stat(Path(root) / r), known, groot_rel, cfg)
-                changed_mods.add(info["m"])
+        changed_mods.update(reresolve(root, m, known, groot_rel, cfg).values())
     if changed_mods or structure_changed:
         m["updated"] = int(time.time())
         rebuild_modules(m, root)
@@ -408,13 +419,54 @@ def sync(root, cfg):
     return m, changed_mods
 
 
+def _stems(files):
+    out = set()
+    for f in files:
+        pp = PurePosixPath(f)
+        out.add(pp.stem)
+        if pp.stem in ("__init__", "index", "mod"):
+            out.add(pp.parent.name)
+    return out
+
+
+def reresolve(root, m, known, groot_rel, cfg, exclude=(), new_files=None):
+    """Re-index files that had unresolved imports or links to removed files.
+
+    Called whenever files appear or disappear, so an import written before its target
+    existed is linked as soon as the target is created. Returns {file: module} for
+    files whose dependency list changed."""
+    rewired = {}
+    stems = _stems(new_files) if new_files is not None else None
+    for r, info in list(m["files"].items()):
+        if r in exclude:
+            continue
+        missing = any(d not in known for d in info["d"])
+        if not missing:
+            if not info.get("x"):
+                continue
+            if stems is not None and not any(re.split(r"[/.]", x.rstrip("/"))[-1] in stems
+                                             for x in info["x"]):
+                continue
+        try:
+            st = os.stat(Path(root) / r)
+        except OSError:
+            continue
+        before = list(info["d"])
+        index_file(root, m, r, st, known, groot_rel, cfg)
+        if m["files"][r]["d"] != before:
+            rewired[r] = m["files"][r]["m"]
+    return rewired
+
+
 def update_files(root, cfg, files):
     m = load_map(root)
     if m is None:
-        return None, set(), [], []
+        return None, set(), [], [], []
     known = set(m["files"])
     groot_rel = rel(root, godot_root(root)) if godot_root(root) != Path(root) else ""
     changed_mods, touched, changed_files = set(), [], []
+    structure_changed = False
+    new_files = []
     for f in files:
         p = Path(f)
         if not p.is_absolute():
@@ -433,20 +485,29 @@ def update_files(root, cfg, files):
                 del m["files"][r]
                 touched.append(r)
                 changed_files.append(r)
+                known.discard(r)
+                structure_changed = True
             continue
         if p.suffix not in TEXT_EXT:
             continue
+        if r not in m["files"]:
+            structure_changed = True
+            new_files.append(r)
         known.add(r)
         changed, mod = index_file(root, m, r, p.stat(), known, groot_rel, cfg)
         touched.append(r)
         if changed:
             changed_mods.add(mod)
             changed_files.append(r)
+    rewired = {}
+    if structure_changed:
+        rewired = reresolve(root, m, known, groot_rel, cfg, exclude=set(touched), new_files=new_files)
+        changed_mods.update(rewired.values())
     if touched:
         m["updated"] = int(time.time())
         rebuild_modules(m, root)
         mark_stale(m, changed_mods)
-    return m, changed_mods, touched, changed_files
+    return m, changed_mods, touched, changed_files, sorted(rewired)
 
 
 def dependents(m, targets):
@@ -484,14 +545,16 @@ def cmd_hook_post_edit(root, cfg):
             paths.append(e["file_path"])
     if not paths or not map_path(root).exists():
         return
-    m, changed_mods, touched, changed_files = update_files(root, cfg, paths)
+    m, changed_mods, touched, changed_files, rewired = update_files(root, cfg, paths)
     if not m or not touched:
         return
     save(root, m, cfg)
-    if not changed_files:
+    if not changed_files and not rewired:
         return
     deps = dependents(m, changed_files)
-    msg = "codemap: indexed {}.".format(", ".join(changed_files[:5]))
+    msg = "codemap: indexed {}.".format(", ".join(changed_files[:5]) or ", ".join(touched[:5]))
+    if rewired:
+        msg += " Newly linked importers (their imports now resolve): {}.".format(", ".join(rewired[:12]))
     if deps:
         msg += " Direct dependents to re-check: {}{}.".format(
             ", ".join(deps[:12]), " (+{} more)".format(len(deps) - 12) if len(deps) > 12 else "")
@@ -510,8 +573,9 @@ def cmd_hook_session_start(root, cfg):
         save(root, m, cfg)
     parts = ["This project uses the Conductor plugin (.conductor/). For non-trivial tasks follow "
              "the conductor:conduct protocol: forge a spec, delegate routine work to cheap "
-             "subagents, verify before delivering. Do NOT scan the whole repo: use the map below, "
-             "open module cards (.conductor/cards/) only for modules the task touches."]
+             "subagents, verify before delivering. Navigate with the map below first and open module cards "
+             "(.conductor/cards/) only for modules the task touches; widen to a targeted search only "
+             "when the map cannot answer, instead of reading the whole repo."]
     mp = sd / "MAP.md"
     if mp.exists():
         text = mp.read_text(encoding="utf-8")
@@ -541,7 +605,7 @@ def main(argv):
             save(root, m, cfg)
             print("codemap: synced; changed modules: {}".format(", ".join(sorted(ch)) or "none"))
         elif cmd == "update":
-            m, ch, touched, _ = update_files(root, cfg, args)
+            m, ch, touched, _, _ = update_files(root, cfg, args)
             if m is None:
                 print("codemap: not initialised; run init")
                 return 1

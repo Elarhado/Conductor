@@ -82,15 +82,17 @@ Pass paths, not file contents. Ask for files on disk plus a short return; read t
 
 Parallelism: run independent steps in parallel, at most `parallel.max_agents` (default 3) at once. Never parallelise steps that edit the same files.
 
-When you need repository context: read `.conductor/MAP.md` (already in your context at session start), then only the cards of modules the task touches, then `CM impact <file>` for dependents. Never glob/read the whole repo. If cards are STALE for modules you need, have `conductor:cartographer` refresh just those first.
+When you need repository context: read `.conductor/MAP.md` (already in your context at session start), then only the cards of modules the task touches, then `CM impact <file>` for dependents. The map is the first source of navigation, not the only one: when it cannot answer (dynamic imports, generated code, languages without annotations, STALE cards, a symbol not found), widen step by step — module directory, related modules, then a targeted repo-wide Grep via `conductor:finder` — instead of reading the whole repository. If cards are STALE for modules you need, have `conductor:cartographer` refresh just those first.
 
 ## 4. Produce
 
 Phase: `RUNS phase --run <id> --set producing`.
 
 Build the result from evidence files, not from memory. Rules for anything factual:
-- Every factual statement, number, date, name of a standard/product/version or quotation in the draft must carry a claim marker `[Cn]`.
-- Register claims as you write: `RUNS add --run <id> --text "<claim in English>" --kind <fact|number|date|definition|quote|calc|code> --source <URL or path> --locator "<where exactly>" --quote "<≤30 words>"`, or bulk via `RUNS import --run <id> --file <jsonl>` (one JSON object per line with the same keys). Prefer bulk import of the scout/reader/analyst evidence you actually use.
+- Every prose unit of the draft (sentence, list item, table row) carries either claim markers `[Cn]` or the non-factual mark `[~]` (opinion, recommendation, transition). The check refuses unmarked units, numbers in `[~]` units, and numbers that do not appear in the claims a unit cites. `[~]` is not a loophole: verifiers flag any `[~]` unit that states a fact.
+- Claims and evidence share one schema (see `RUNS` help): `text`, `kind` (fact|number|date|quote|definition|calc|code|inference), `source`, `locator`, `quote`, `defs` (required for number/calc), `units`, `published`, `inputs` (calc), `depends_on` (inference). Import the evidence you actually use: `RUNS import --run <id> --file <run>/evidence/<file>.jsonl` — it validates every line and imports nothing if any line is malformed. Single claims: `RUNS add --run <id> --text ... --kind ... --source ... --locator ... --defs ...`.
+- Conclusions that combine several facts are claims of kind `inference` with `--depends C3,C7`. If a premise changes or is refuted, the inference automatically returns to pending.
+- To correct a claim use `RUNS edit --run <id> --id Cn ...` (new version, back to pending) or `RUNS retract`. A verdict always belongs to one exact version of a claim, including its input files.
 - If evidence conflicts, do not pick silently: present both with sources, or resolve by the more authoritative/primary/recent source and say why.
 - If something needed is NOT FOUND, say so in the draft; never fill the gap from memory.
 - Never write a number you did not get from a source or from code the analyst ran.
@@ -99,13 +101,12 @@ Write the draft to `.conductor/runs/<id>/draft.md` (or the code changes, for bui
 
 ## 5. Verify (circular, until clean)
 
-Invoke the `conductor:verify` skill. In short: `RUNS phase --set verifying` → `RUNS round` → independent verifier(s) on pending claims and the draft → apply verdicts → fix the draft → re-verify only what changed → repeat until no pending/refuted claims and `RUNS check` passes, or the round limit is hit. `--no-verify` skips this only for tasks with no factual or code content; never skip it for research, analytics or code.
+Invoke the `conductor:verify` skill. In short: `RUNS phase --set verifying` → `RUNS round` → independent verifier(s) check pending claims and the draft, write a report and record verdicts → you fix claims and draft → only changed claims (automatically pending again) are re-checked → repeat until no pending/refuted claims and `RUNS check` passes, or the round limit is hit. `--no-verify` skips this only for tasks with no factual or code content; never skip it for research, analytics or code.
 
 ## 6. Deliver
 
-- `RUNS check --run <id> --file draft.md` must pass with 0 blockers.
-- `RUNS render --run <id> --file draft.md --out final.md --lang ru` turns `[Cn]` into numbered sources and marks unverifiable claims as "⚠ не подтверждено".
-- Set `RUNS phase --run <id> --set done`.
+- `RUNS finalize --run <id> --file .conductor/runs/<id>/draft.md --lang ru` is the only way to complete a run (`phase --set done` is refused). It re-runs the check on the final text, requires a verifier report on disk for every verified claim it cites, renders `final.md` (`[Cn]` → numbered sources, unverifiable → "⚠ не подтверждено", `[~]` removed) and records hashes of the draft, the result and the claim versions used.
+- Deliver the content of `final.md`, not the draft. The chat reply must not add facts or numbers that are not in `final.md`: anything outside it has not passed the check. A short note on what was verified is fine.
 - Reply in Russian: the result (or the file), a one-line note on what was verified and how (e.g. "проверено 23 утверждения, 2 источника не подтвердились и удалены"), any remaining caveats, one next step if real.
 
 ## 7. Memory upkeep (automatic, no command needed)

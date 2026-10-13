@@ -20,14 +20,16 @@
 .conductor/runs/<дата-время-slug>/
   state.json     фаза, номер раунда, гейт
   spec.md        ТЗ (EN)
-  evidence/      сырые записи scout/reader/analyst (jsonl)
+  evidence/      записи scout/reader/analyst (jsonl, та же схема, что у реестра)
   analysis/      скрипты analyst
-  claims.jsonl   реестр утверждений
-  draft.md       черновик с метками [Cn]
-  final.md       итог с нумерованными источниками
+  reports/       отчёты проверяющих по раундам
+  claims.jsonl   реестр утверждений (текущие версии)
+  verdicts.jsonl журнал вердиктов, каждый привязан к отпечатку версии утверждения
+  draft.md       черновик с метками [Cn] и [~]
+  final.md       итог с нумерованными источниками (пишет только finalize)
 ```
 
-Фазы: `planning → producing → verifying ⇄ producing → delivering → done` (плюс `awaiting_user`, `aborted`).
+Фазы: `planning → producing → verifying ⇄ producing → delivering → done` (плюс `awaiting_user`, `aborted`). В `done` задача переходит только через `runs.py finalize`.
 
 ## Хуки
 
@@ -35,7 +37,7 @@
 |---|---|---|---|
 | SessionStart | `codemap.py hook-session-start` | 0 токенов модели на работу, ≤ ~1 тыс. токенов контекста | инкрементальная синхронизация карты по mtime/size, вставка MAP.md и короткой инструкции |
 | PostToolUse (Edit/Write/MultiEdit/NotebookEdit) | `codemap.py hook-post-edit` | одна строка контекста | переиндексация файла, список зависимых файлов, пометка карточки STALE |
-| Stop | `runs.py hook-stop` | 0, если нет активного run | блокирует завершение хода, если в активном run остались pending/refuted утверждения (не более 3 раз подряд, уважает `stop_hook_active`) |
+| Stop | `runs.py hook-stop` | 0, если нет активного run | блокирует завершение хода, если в активном run остались pending/refuted утверждения или задача в фазе delivering не финализирована (не более 3 раз подряд, уважает `stop_hook_active`) |
 | Stop (async) | `usage.py hook-stop` | 0 | пересчёт токенов сессии из транскриптов |
 | SubagentStop (async) | `usage.py hook-subagent-stop` | 0 | сопоставление agent_id → тип агента для отчёта |
 

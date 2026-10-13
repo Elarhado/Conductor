@@ -39,29 +39,30 @@ Prompt (English):
 RUN: .conductor/runs/<id>/
 CHECK: claims <ids>   (list with: RUNS list --run <id> --ids <ids>)
 DRAFT: .conductor/runs/<id>/draft.md
+REPORT: .conductor/runs/<id>/reports/round-<N>-<agent>[-<batch>].md   (write it, then record verdicts with RUNS verdict ... --report <this path>)
 DEFINITIONS FIXED IN SPEC: <paste the <definitions> block>
 RETURN: one line per claim "Cn | verified|refuted|unverifiable | reason | correct value + source", then UNTRACED list. ≤ 300 words.
 ```
 
 ## Step 3 — Apply verdicts (orchestrator)
 
-For each verdict: `RUNS set --run <id> --id Cn --status <verdict> --note "<reason>"`.
+Verifiers record their verdicts themselves (`RUNS verdict ... --by fact-checker --report <file>`), bound to the exact claim version they checked. You may record only `refuted`/`unverifiable` (`--by orchestrator`), never `verified`. Check with `RUNS list --run <id>`.
 
 Then fix the draft:
-- **refuted** → replace with the corrected statement as a NEW claim (`RUNS add ...` with the verifier's source), mark the old one `retracted`, update the marker. Re-read the surrounding text: a wrong premise often makes the conclusion wrong too — re-derive conclusions that depended on it.
+- **refuted** → `RUNS edit --run <id> --id Cn --text ... --source ... --locator ...` with the verifier's correction (the claim gets a new version and returns to pending for re-check), or `RUNS retract` and add a new claim. Update the draft text and its numbers. Re-read the surrounding text: a wrong premise often makes the conclusion wrong too — re-derive conclusions that depended on it.
 - **unverifiable** → either find another source (scout, one attempt) and add it as a new pending claim, or remove the statement, or keep it explicitly marked as unconfirmed if it is genuinely useful to the user.
-- **UNTRACED** statements → add claims for them (pending) or delete them.
+- **UNTRACED** statements (including `[~]` units that actually state facts) → add claims for them (pending) or delete them.
 - **definition mismatch** → never "harmonise" numbers measured differently; either find comparable figures or present them separately with each definition.
 
 You are the adjudicator when a verifier and the evidence disagree, but you may only overrule a `refuted` verdict by opening the source yourself and quoting the passage; record that in the note.
 
 ## Step 4 — Repeat on what changed
 
-Next round checks only: new claims, claims whose text/source changed, and statements next to edits. Not the whole document again.
+Next round checks only what is pending: new claims, edited claims, calc claims whose script or input files changed, and inferences whose premises changed — the ledger detects all of these by version fingerprint (`RUNS list` marks them "CHANGED since last verdict"). Not the whole document again.
 
 Stop when **all** hold:
 - `RUNS summary` shows `pending = 0` and `refuted = 0`;
-- `RUNS check --run <id> --file draft.md` exits 0 (no blockers: no unknown/unverified markers, no numbers without markers);
+- `RUNS check --run <id> --file draft.md` exits 0 (every unit marked, every cited claim verified or unverifiable at its current version, every number present in the claims it cites);
 - for code: build + tests pass in the last code-verifier report and every acceptance criterion is met.
 
 If the round limit is reached and something is still open: stop looping. Remove the open statements or mark them unconfirmed, set `RUNS phase --set awaiting_user` if the user's knowledge is required (internal company data, a choice between definitions), and ask one concise question in Russian. Only ask the user about things outside what tools can verify.
@@ -70,8 +71,9 @@ If the round limit is reached and something is still open: stop looping. Remove 
 
 Before rendering, read the final draft once looking only for: conclusions stronger than the claims support, comparisons across different definitions, outdated "current" states, and silent omissions of conflicting evidence. Fix and, if you add facts, run one more round for them.
 
-Then return to `conductor:conduct` step 6 (render and deliver), or, standalone, run `RUNS render` and report what was checked and what changed.
+Then return to `conductor:conduct` step 6 (`RUNS finalize`), or, standalone, run `RUNS finalize` yourself and report what was checked and what changed.
 
 ## Honesty rule
 
-The gate guarantees that every statement shown to the user is either traced to a source an independent checker confirmed, or visibly marked unconfirmed. It cannot make a wrong primary source right; when the best available sources are weak or disagree, say so plainly.
+What is enforced mechanically: one record schema; verdicts bound to claim versions (edits, changed input files and changed premises reset them); every prose unit marked; numbers present in the cited claims; completion only through `finalize` with verifier reports on disk.
+What is judged, not enforced: whether a source really supports a claim's meaning, whether definitions match, whether a `[~]` unit hides a fact. That is the independent verifier's job, and it can err. A wrong primary source stays wrong; when the best available sources are weak or disagree, say so plainly.

@@ -15,7 +15,8 @@
   "profile": "auto",
   "language_user": "ru",
   "language_internal": "en",
-  "verify": {"max_rounds": 4, "gate": true, "max_gate_blocks": 3, "strict_numbers": true},
+  "verify": {"max_rounds": 4, "gate": true, "max_gate_blocks": 3, "strict_numbers": true,
+             "strict_sentences": true, "verifiers": ["fact-checker", "code-verifier", "user"]},
   "parallel": {"max_agents": 3},
   "forge": {"confirm": true, "skip_trivial": true},
   "codemap": {
@@ -37,7 +38,9 @@
 | `profile` | research / build / analytics / auto — какой шаблон ТЗ брать по умолчанию |
 | `verify.max_rounds` | максимум раундов проверки, затем открытое удаляется или помечается |
 | `verify.gate` | Stop-хук не даёт закончить с непроверенными утверждениями |
-| `verify.strict_numbers` | число или дата без `[Cn]` в финальном тексте блокирует выдачу |
+| `verify.strict_numbers` | число должно встречаться в утверждениях, на которые ссылается фраза; во фразах `[~]` чисел быть не должно |
+| `verify.strict_sentences` | каждая фраза, пункт и строка таблицы итога помечены `[Cn]` или `[~]` |
+| `verify.verifiers` | кто может ставить статус `verified` |
 | `parallel.max_agents` | сколько субагентов одновременно |
 | `forge.confirm` | показывать ТЗ и спрашивать перед запуском |
 | `codemap.modules` | ручная группировка файлов в модули (glob) |

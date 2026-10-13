@@ -14,7 +14,9 @@ DEFAULT_CONFIG = {
         "max_rounds": 4,          # producer -> verifier loop cap
         "gate": True,             # Stop hook refuses to finish a run with unresolved claims
         "max_gate_blocks": 3,
-        "strict_numbers": True    # a number/date in the final text without [Cn] blocks delivery
+        "strict_numbers": True,   # numbers must appear in the claims they cite; none allowed in [~] units
+        "strict_sentences": True, # every prose unit needs [Cn] or an explicit non-factual mark [~]
+        "verifiers": ["fact-checker", "code-verifier", "user"]  # who may issue "verified"
     },
     "parallel": {"max_agents": 3},
     "forge": {"confirm": True, "skip_trivial": True},
