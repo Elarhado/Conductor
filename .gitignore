@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+.conductor/usage/
+.conductor/runs/*/evidence/

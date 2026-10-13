@@ -1,0 +1,16 @@
+{
+  "name": "conductor",
+  "owner": {
+    "name": "Vladislav Alekseev",
+    "url": "https://github.com/Elarhado"
+  },
+  "description": "Conductor: token-efficient orchestration and circular verification for Claude Code.",
+  "plugins": [
+    {
+      "name": "conductor",
+      "source": "./",
+      "description": "Opus orchestrates, Haiku/Sonnet do the volume; claims-ledger verification; incremental project map; token ledger.",
+      "category": "productivity"
+    }
+  ]
+}
