@@ -101,6 +101,26 @@ class CodemapTest(unittest.TestCase):
         m = json.loads((self.d / ".conductor/map.json").read_text())
         self.assertEqual(m["files"]["app.py"]["d"], ["tools/report.py"])
 
+    def test_ensure_connects_new_project_then_syncs(self):
+        fresh = Path(tempfile.mkdtemp())
+        write(fresh, "src/a.py", "from src import b\n")
+        write(fresh, "src/b.py", "x = 1\n")
+        rc, out, err = run("codemap.py", ["ensure"], fresh)
+        self.assertEqual(rc, 0, err)
+        self.assertIn("initialised now", out)
+        self.assertIn("| module |", out)
+        self.assertTrue((fresh / ".conductor/.gitignore").exists())
+        self.assertEqual(sorted(p.name for p in fresh.iterdir()), [".conductor", "src"])
+        write(fresh, "src/c.py", "y = 2\n")
+        rc, out, _ = run("codemap.py", ["ensure"], fresh)
+        self.assertIn("map synced (3 files", out)
+
+    def test_ensure_refuses_home(self):
+        env = dict(os.environ, CLAUDE_PROJECT_DIR=str(Path.home()))
+        p = subprocess.run([sys.executable, str(S / "codemap.py"), "ensure"], capture_output=True, text=True, env=env)
+        self.assertEqual(p.returncode, 3)
+        self.assertIn("refusing", p.stdout)
+
     def test_hooks_silent_without_project(self):
         empty = Path(tempfile.mkdtemp())
         for cmd in ("hook-session-start", "hook-post-edit"):

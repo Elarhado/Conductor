@@ -1,6 +1,6 @@
 ---
 name: conduct
-description: Orchestrate a non-trivial task (research, game/app development, data analysis) on Opus with cheap Haiku/Sonnet workers and circular verification. Turns the request into a structured spec, shows it for approval, delegates routine work, verifies, then delivers. Use for any multi-step task; skip for one-line questions.
+description: One command for any project and any chat - orchestrates a non-trivial task (research, game/app development, data analysis) on Opus with cheap Haiku/Sonnet workers and circular verification. Connects the project automatically on first use. Use for any multi-step task; skip for one-line questions.
 argument-hint: "[task description] [--fable] [--no-confirm] [--no-verify]"
 ---
 
@@ -23,6 +23,15 @@ Classify the request:
 
 Profile: `research` (sources, facts, comparisons), `build` (games/apps/code), `analytics` (datasets, metrics, charts), or `mixed`. If `.conductor/config.json` sets `profile`, prefer it.
 
+## 0.5 Ensure the project (first tool call of every non-trivial run)
+
+Run `CM ensure`. It works the same in a brand-new chat, in a long-running chat, and in a project that has never seen Conductor:
+- not connected yet → script-only setup in seconds (map, config, `.conductor/.gitignore`); nothing outside `.conductor/` is touched, no agents are spawned;
+- already connected → incremental sync (picks up edits made outside Claude Code);
+- prints the project map into this conversation, so you have it even if the session started before installation.
+If it refuses (home/system folder), tell the user in one line to open a project folder, and stop. If it warns the map is partial, continue and mention it once.
+Module cards are written lazily: when the task touches modules whose cards are stubs or STALE, have `conductor:cartographer` fill just those.
+
 ## 1. Forge the spec
 
 Load the matching template from `${CLAUDE_PLUGIN_ROOT}/skills/conduct/templates/` (`research.md`, `build.md`, `analytics.md`, `general.md`) and fill it in English. Rules:
@@ -36,7 +45,7 @@ Create the run and save the spec:
 ```
 RUNS new --slug <short-english-slug> --profile <profile>   # prints <run-id>
 ```
-Write the spec to `.conductor/runs/<run-id>/spec.md`. If `.conductor/` does not exist, the run commands create it; suggest `/conductor:init` afterwards for code projects.
+Write the spec to `.conductor/runs/<run-id>/spec.md`.
 
 ## 2. Show it and ask (default; skip with `--no-confirm` or config `forge.confirm=false`)
 

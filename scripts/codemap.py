@@ -11,6 +11,7 @@ Layout under <project>/.conductor/:
   cards/<mod>.md    module cards written by the cartographer agent (model-written)
 
 Commands:
+  ensure                    init if needed, else sync; print MAP (entry point for any chat)
   init                      full scan (no model involved), creates card stubs
   sync                      cheap incremental pass (mtime/size), used at SessionStart
   update FILE...            re-index given files
@@ -91,6 +92,9 @@ def ignored(relpath, cfg):
     return False
 
 
+WALK_STATE = {"truncated": False}
+
+
 def walk(root, cfg):
     root = Path(root)
     limit = cfg["codemap"]["max_files"]
@@ -115,6 +119,7 @@ def walk(root, cfg):
                 continue
             n += 1
             if n > limit:
+                WALK_STATE["truncated"] = True
                 return
             yield r, st
 
@@ -521,7 +526,21 @@ def save(root, m, cfg):
 
 
 # ---------------------------------------------------------------- commands
-def cmd_init(root, cfg):
+def unsafe_root(root):
+    r = Path(root).resolve()
+    home = Path.home().resolve()
+    return r == home or r == Path(r.anchor) or r in (home / "Desktop", home / "Documents", home / "Downloads")
+
+
+def write_local_gitignore(root):
+    p = state_dir(root) / ".gitignore"
+    if not p.exists():
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("# Conductor: keep map, cards and config in git; skip bulky run data\n"
+                     "usage/\nruns/*/evidence/\nruns/*/analysis/*.out\n", encoding="utf-8")
+
+
+def cmd_init(root, cfg, quiet=False):
     m, _ = full_scan(root, cfg)
     save(root, m, cfg)
     for mod, info in m["modules"].items():
@@ -529,8 +548,41 @@ def cmd_init(root, cfg):
     cp = state_dir(root) / "config.json"
     if not cp.exists():
         write_json(cp, {"profile": cfg["profile"]})
-    print("codemap: {} files, {} modules -> {}".format(
-        len(m["files"]), len(m["modules"]), (state_dir(root) / "MAP.md").as_posix()))
+    write_local_gitignore(root)
+    if not quiet:
+        print("codemap: {} files, {} modules -> {}".format(
+            len(m["files"]), len(m["modules"]), (state_dir(root) / "MAP.md").as_posix()))
+    return m
+
+
+def cmd_ensure(root, cfg):
+    """One-step entry used by /conductor:conduct in any project and any chat.
+
+    Not initialised -> fast script-only init (no model, no cards written by agents).
+    Initialised     -> cheap incremental sync.
+    Then prints the compact map so it lands in the current conversation's context,
+    which makes a session that started before installation (or before init) work too."""
+    if unsafe_root(root):
+        print("conductor: refusing to index {} (home/system folder). Open a project folder and "
+              "run the command there.".format(root))
+        return 3
+    if not map_path(root).exists():
+        m = cmd_init(root, cfg, quiet=True)
+        head = "conductor: project initialised now ({} files, {} modules; cards are filled lazily " \
+               "for modules a task touches).".format(len(m["files"]), len(m["modules"]))
+    else:
+        m, ch = sync(root, cfg)
+        save(root, m, cfg)
+        head = "conductor: map synced ({} files; changed modules: {}).".format(
+            len(m["files"]), ", ".join(sorted(ch)) or "none")
+    if WALK_STATE["truncated"]:
+        head += " WARNING: file limit codemap.max_files reached; map is partial — set " \
+                "codemap.ignore/modules in .conductor/config.json."
+    print(head)
+    text = (state_dir(root) / "MAP.md").read_text(encoding="utf-8")
+    limit = cfg["codemap"]["session_map_chars"]
+    print(text if len(text) <= limit else text[:limit] + "\n...(truncated; read .conductor/MAP.md)")
+    return 0
 
 
 def cmd_hook_post_edit(root, cfg):
@@ -597,6 +649,8 @@ def main(argv):
     try:
         if cmd == "init":
             cmd_init(root, cfg)
+        elif cmd == "ensure":
+            return cmd_ensure(root, cfg)
         elif cmd == "sync":
             m, ch = sync(root, cfg)
             if m is None:
