@@ -30,7 +30,7 @@
 В любой сессии Claude Code:
 
 ```
-/plugin marketplace add Elarhado/Condutor
+/plugin marketplace add Elarhado/conductor
 /plugin install conductor@conductor
 ```
 
